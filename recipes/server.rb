@@ -204,6 +204,9 @@ unless platform_family?(%w{mac_os_x})
     owner "root" unless platform? 'windows'
     group node['mysql']['root_group'] unless platform? 'windows'
     mode "0644"
+    if node['platform'] == "ubuntu" && node['platform_version'].to_f >= 10.04
+      notifies :create, "template[/etc/apparmor.d/usr.sbin.mysqld]", :immediately
+    end
     case node['mysql']['reload_action']
     when 'restart'
       notifies :restart, "service[mysql]", :immediately
@@ -213,6 +216,23 @@ unless platform_family?(%w{mac_os_x})
       Chef::Log.info "my.cnf updated but mysql.reload_action is #{node['mysql']['reload_action']}. No action taken."
     end
     variables :skip_federated => skip_federated
+  end
+
+  if node['platform'] == "ubuntu" && node['platform_version'].to_f >= 10.04
+    template "/etc/apparmor.d/usr.sbin.mysqld" do
+      source "usr.sbin.mysqld.erb"
+      owner "root"
+      group node['mysql']['root_group']
+      mode "0644"
+      notifies :run, "execute[reload apparmor]", :immediately
+      variables :data_dir_no_symlink => File.symlink?(node['mysql']['data_dir']) ? File.readlink(node['mysql']['data_dir']) : node['mysql']['data_dir']
+    end
+
+    execute "reload apparmor" do
+      user "root"
+      command "/etc/init.d/apparmor reload"
+      action :nothing
+    end
   end
 
   service "mysql" do
